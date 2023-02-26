@@ -391,6 +391,58 @@ TEST(Matrix, partial_matrix) {
   EXPECT_EQ(found, 2) << " partial result did not find 2 results as expected";
 }
 
+// slim dowm matrix response: https://github.com/valhalla/valhalla/pull/3987
+const auto test_matrix_default = R"({
+    "sources":[
+      {"lat":52.103948,"lon":5.06813}
+    ],
+    "targets":[
+      {"lat":52.106126,"lon":5.101497},
+      {"lat":52.100469,"lon":5.087099},
+      {"lat":52.103105,"lon":5.081005},
+      {"lat":52.094273,"lon":5.075254}
+    ],
+    "costing":"auto"
+  })";
+
+const auto test_matrix_verbose_false = R"({
+    "sources":[
+      {"lat":52.103948,"lon":5.06813}
+    ],
+    "targets":[
+      {"lat":52.106126,"lon":5.101497},
+      {"lat":52.100469,"lon":5.087099},
+      {"lat":52.103105,"lon":5.081005},
+      {"lat":52.094273,"lon":5.075254}
+    ],
+    "costing":"auto",
+    "verbose":false
+  })";
+
+TEST(Matrix, slim_matrix) {
+  loki_worker_t loki_worker(config);
+
+  Api request;
+  ParseApi(test_matrix_default, Options::sources_to_targets, request);
+  loki_worker.matrix(request);
+  thor_worker_t::adjust_scores(*request.mutable_options());
+
+  GraphReader reader(config.get_child("mjolnir"));
+
+  sif::mode_costing_t mode_costing;
+  mode_costing[0] =
+      CreateSimpleCost(request.options().costings().find(request.options().costing_type())->second);
+
+  TimeDistanceMatrix timedist_matrix;
+  std::vector<TimeDistance> results =
+      timedist_matrix.SourceToTarget(*request.mutable_options()->mutable_sources(),
+                                     *request.mutable_options()->mutable_targets(), reader,
+                                     mode_costing, sif::TravelMode::kDrive, 400000.0);
+  for (auto x : results) {
+    std::cout << x.dist << " " << x.time << std::endl;
+  }
+}
+
 int main(int argc, char* argv[]) {
   logging::Configure({{"type", ""}}); // silence logs
   testing::InitGoogleTest(&argc, argv);
